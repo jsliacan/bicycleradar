@@ -84,21 +84,17 @@ async def worker_main():
 
 def main(bicycleinit: Connection, name: str, args: dict):
     sensor = BicycleSensor(bicycleinit, name, args)
+
+    radar_mac = args.get('address')
+    char_uuid = args.get('char_uuid')
+    if not radar_mac:
+        sensor.send_msg('Error: Missing required config parameter: "address"')
+        return
+    if not char_uuid:
+        sensor.send_msg('Error: Missing required config parameter: "char_uuid"')
+        return
+
     sensor.write_header(['target_ids', 'target_ranges', 'target_speeds', 'bin_target_speeds'])
-
-    if 'address' not in args:
-        sensor.send_msg(f'Error: Missing required config parameter "address".')
-        return
-    if 'char_uuid' not in args:
-        sensor.send_msg(f'Error: Missing required config parameter "char_uuid".')
-        return
-
-    radar_mac = args['address']
-    char_uuid = args['char_uuid']
-
-    if not (radar_mac and char_uuid):
-        sensor.send_msg(f'Error reading radar MAC address or characteristics UUID from config.')
-        return
 
     # Run the radar logic in the asyncio event loop
     try:
