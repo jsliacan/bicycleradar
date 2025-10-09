@@ -1,4 +1,4 @@
-# Bicycle Lidar
+# Bicycle Radar
 
 ## Contributing
 

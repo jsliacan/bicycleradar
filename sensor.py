@@ -1,24 +1,11 @@
-import time
-from collections import deque
+import asyncio
 from multiprocessing.connection import Connection
 
-# sensor specific
-import datetime, time
-import asyncio
-import logging
-import threading
-
-from bleak import BleakScanner, BleakClient
+from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
 from bicycleinit.BicycleSensor import BicycleSensor
 
-sensor = None
-radar_mac = ''
-char_uuid = ''
-
-worker_thread = threading.Thread(target=worker_main)
-worker_thread.daemon = True    # don't worry about shutting it down
 
 def bin2dec(n):
     """
@@ -31,15 +18,12 @@ def bin2dec(n):
         fractional_part += 0.5
     return fractional_part + (n>>2)
 
-def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray):
+def notification_handler(sensor, characteristic: BleakGATTCharacteristic, data: bytearray):
     """
     Simple notification handler which processes the data received into a
     CSV row and prints it into a file.
     """
-    
-    dt = datetime.datetime.now()
-    dt_str = dt.strftime("%Y-%m-%d %H:%M:%S.%f")
-    dt_unix = dt.timestamp()
+
     target_id_mask = 0b11111100 # mask that reveals first 6 bits; use '&' with value
     target_ids = [0 for x in range(6)]
     target_ranges = [0 for x in range(6)] # 6 targets, each 3 bytes (info, range, speed)
@@ -55,72 +39,74 @@ def notification_handler(characteristic: BleakGATTCharacteristic, data: bytearra
             target_ids[j] = (dat & target_id_mask)
         elif i%3 == 1:
             target_ranges[j] = dat
-        else: 
+        else:
             target_speeds[j] = bin2dec(dat)
             bin_target_speeds[j] = format(dat, '08b')
 
     data_row = [target_ids, target_ranges, target_speeds, bin_target_speeds]
-    print(f"{dt_str}\t{target_ranges}\t{target_speeds}")
+    print('\t'.join([str(x) for x in data_row]))
     sensor.write_measurement(data_row)
 
-async def scan():
+async def scan(radar_mac):
     """
     Scan for the correct Varia.
     """
-    global radar_mac 
-
     return await BleakScanner.find_device_by_address(radar_mac)
 
 
-async def connect(device):
+async def connect(sensor, device, char_uuid):
     """
     Connect to the correct Varia.
     """
-    global char_uuid
     # pair with device if not already paired
     async with BleakClient(device, pair=True) as client:
         print("Varia connected.")
-        await client.start_notify(char_uuid, notification_handler)
-        # await asyncio.sleep(60.0)     # run for given time (in seconds)
+        await client.start_notify(char_uuid, lambda c, d: notification_handler(sensor, c, d))
         await asyncio.Future()  # run indefinitely
-        # await client.stop_notify(RADAR_CHAR_UUID)  # use with asyncio.sleep()
 
-async def radar():
+async def radar(sensor, radar_mac, char_uuid):
     """
     Main radar function that coordinates communication with Varia radar.
     """
-    global char_uuid, radar_mac
-
     varia = await scan(radar_mac) # find the BLEDevice we are looking for
     if not varia:
-        logging.warning("Device not found")
+        sensor.send_msg("Device not found")
         return
 
-    await connect(varia, char_uuid)
+    await connect(sensor, varia, char_uuid)
 
 async def worker_main():
-    
+
     global radar_mac, char_uuid
 
     asyncio.run(radar())
 
 
 def main(bicycleinit: Connection, name: str, args: dict):
-   
-    global sensor, char_uuid, radar_mac, worker_thread
-
     sensor = BicycleSensor(bicycleinit, name, args)
     sensor.write_header(['target_ids', 'target_ranges', 'target_speeds', 'bin_target_speeds'])
 
+    if 'address' not in args:
+        sensor.send_msg(f'Error: Missing required config parameter "address".')
+        return
+    if 'char_uuid' not in args:
+        sensor.send_msg(f'Error: Missing required config parameter "char_uuid".')
+        return
+
     radar_mac = args['address']
     char_uuid = args['char_uuid']
-    
+
     if not (radar_mac and char_uuid):
         sensor.send_msg(f'Error reading radar MAC address or characteristics UUID from config.')
+        return
 
-    worker_thread.start()
+    # Run the radar logic in the asyncio event loop
+    try:
+        asyncio.run(radar(sensor, radar_mac, char_uuid))
+    except Exception as e:
+        sensor.send_msg(f"Radar loop error: {e}")
 
     sensor.shutdown()
 
 if __name__ == "__main__":
-    main(None, "radar", {'address': '', 'char_uuid': ''})
+    main(None, "radar", {})
