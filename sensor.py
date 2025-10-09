@@ -75,13 +75,6 @@ async def radar(sensor, radar_mac, char_uuid):
 
     await connect(sensor, varia, char_uuid)
 
-async def worker_main():
-
-    global radar_mac, char_uuid
-
-    asyncio.run(radar())
-
-
 def main(bicycleinit: Connection, name: str, args: dict):
     sensor = BicycleSensor(bicycleinit, name, args)
 
