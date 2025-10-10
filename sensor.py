@@ -44,7 +44,6 @@ def notification_handler(sensor, characteristic: BleakGATTCharacteristic, data: 
             bin_target_speeds[j] = format(dat, '08b')
 
     data_row = [target_ids, target_ranges, target_speeds, bin_target_speeds]
-    print('\t'.join([str(x) for x in data_row]))
     sensor.write_measurement(data_row)
 
 async def scan(radar_mac):
@@ -60,7 +59,7 @@ async def connect(sensor, device, char_uuid):
     """
     # pair with device if not already paired
     async with BleakClient(device, pair=True) as client:
-        print("Varia connected.")
+        sensor.send_msg("Varia connected.")
         await client.start_notify(char_uuid, lambda c, d: notification_handler(sensor, c, d))
         await asyncio.Future()  # run indefinitely
 
