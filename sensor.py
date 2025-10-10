@@ -43,7 +43,7 @@ def notification_handler(sensor, characteristic: BleakGATTCharacteristic, data: 
             target_speeds[j] = bin2dec(dat)
             bin_target_speeds[j] = format(dat, '08b')
 
-    data_row = [target_ids, target_ranges, target_speeds, bin_target_speeds]
+    data_row = [f'"{target_ids}"', f'"{target_ranges}"', f'"{target_speeds}"', f'"{bin_target_speeds}"']
     sensor.write_measurement(data_row)
 
 async def scan(radar_mac):
